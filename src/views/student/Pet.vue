@@ -27,7 +27,7 @@ const petTypes = [
 
 const menuItems = [
   { name: 'StudentHome', icon: '🏠', label: '首页' },
-  { name: 'StudentPet', icon: '🐾', label: '我的宠物' },
+  { name: 'StudentMyPet', icon: '🐾', label: '我的宠物' },
   { name: 'StudentBattle', icon: '⚔️', label: 'PK对战' },
   { name: 'StudentShop', icon: '🛒', label: '商店' },
   { name: 'StudentTasks', icon: '📋', label: '任务' },

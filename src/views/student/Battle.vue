@@ -2,13 +2,13 @@
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { usePetStore } from '@/stores/pet'
+import { usePetAssetStore } from '@/stores/petAsset'
 import { useGameStore } from '@/stores/game'
 import type { BattleState, BattleLogEntry } from '@/types'
 
 const router = useRouter()
 const userStore = useUserStore()
-const petStore = usePetStore()
+const petAssetStore = usePetAssetStore()
 const gameStore = useGameStore()
 
 const battleState = ref<BattleState | null>(null)
@@ -16,31 +16,52 @@ const isBattling = ref(false)
 const selectedOpponent = ref<string | null>(null)
 const battleSpeed = ref(1)
 
+// 获取对手列表（有宠物的其他学生）
 const opponents = computed(() => {
   return userStore.getAllStudents()
     .filter(s => s.id !== userStore.currentUser?.id)
     .slice(0, 5)
     .map(student => {
-      const pet = petStore.userPets.find(p => p.ownerId === student.id)
+      const pet = petAssetStore.studentPets.find(p => p.ownerId === student.id)
+      const asset = pet ? petAssetStore.getAssetById(pet.assetId) : null
       return {
         ...student,
         pet,
-        petStats: pet ? petStore.getPetTotalStats(pet.id) : null
+        asset,
+        petStats: asset ? {
+          attack: asset.statsBonus.attack || 10,
+          defense: asset.statsBonus.defense || 5,
+          speed: asset.statsBonus.speed || 5,
+          health: asset.statsBonus.health || 100,
+          critical: asset.statsBonus.critical || 5
+        } : null
       }
     })
     .filter(o => o.pet)
 })
 
-const currentPet = computed(() => petStore.currentPet)
-const currentPetStats = computed(() => 
-  currentPet.value ? petStore.getPetTotalStats(currentPet.value.id) : null
+// 当前用户的宠物
+const currentPet = computed(() => petAssetStore.currentUserPet)
+const currentPetAsset = computed(() => 
+  currentPet.value ? petAssetStore.getAssetById(currentPet.value.assetId) : null
 )
+const currentPetStats = computed(() => {
+  if (!currentPetAsset.value) return null
+  return {
+    attack: currentPetAsset.value.statsBonus.attack || 10,
+    defense: currentPetAsset.value.statsBonus.defense || 5,
+    speed: currentPetAsset.value.statsBonus.speed || 5,
+    health: currentPetAsset.value.statsBonus.health || 100,
+    critical: currentPetAsset.value.statsBonus.critical || 5
+  }
+})
 
 const menuItems = [
   { name: 'StudentHome', icon: '🏠', label: '首页' },
-  { name: 'StudentPet', icon: '🐾', label: '我的宠物' },
+  { name: 'StudentMyPet', icon: '🐾', label: '我的宠物' },
   { name: 'StudentBattle', icon: '⚔️', label: 'PK对战' },
   { name: 'StudentShop', icon: '🛒', label: '商店' },
+  { name: 'StudentInventory', icon: '🎒', label: '背包' },
   { name: 'StudentTasks', icon: '📋', label: '任务' },
   { name: 'StudentRanking', icon: '🏆', label: '排行榜' },
   { name: 'StudentAchievements', icon: '🎖️', label: '成就' },
@@ -131,14 +152,14 @@ function endBattle() {
   const isWin = battleState.value.winner === battleState.value.playerPetId
   
   if (isWin) {
-    petStore.recordBattleResult(currentPet.value.id, true)
-    petStore.addExpToPet(currentPet.value.id, 30)
+    petAssetStore.recordBattle(currentPet.value.id, true)
+    petAssetStore.addExpToPet(currentPet.value.id, 30)
     userStore.addCoins(20)
     userStore.addExp(15)
     gameStore.recordPkWin()
   } else {
-    petStore.recordBattleResult(currentPet.value.id, false)
-    petStore.addExpToPet(currentPet.value.id, 10)
+    petAssetStore.recordBattle(currentPet.value.id, false)
+    petAssetStore.addExpToPet(currentPet.value.id, 10)
     userStore.addExp(5)
   }
 }
@@ -163,6 +184,20 @@ function getPetIcon(type: string): string {
     turtle: '🐢'
   }
   return icons[type] || '🐾'
+}
+
+// 获取宠物图片URL
+function getPetImageUrl(pet: typeof currentPet.value): string {
+  if (!pet) return ''
+  const asset = petAssetStore.getAssetById(pet.assetId)
+  return asset?.previewUrl || ''
+}
+
+// 获取宠物类型
+function getPetType(pet: typeof currentPet.value): string {
+  if (!pet) return ''
+  const asset = petAssetStore.getAssetById(pet.assetId)
+  return asset?.type || ''
 }
 </script>
 
@@ -212,7 +247,8 @@ function getPetIcon(type: string): string {
           <h2>我的宠物</h2>
           <div class="pet-card my-pet">
             <div class="pet-avatar">
-              <span class="pet-emoji">{{ getPetIcon(currentPet.type) }}</span>
+              <img v-if="getPetImageUrl(currentPet)" :src="getPetImageUrl(currentPet)" class="pet-image" />
+              <span v-else class="pet-emoji">{{ getPetIcon(getPetType(currentPet)) }}</span>
               <span class="pet-level">Lv.{{ currentPet.level }}</span>
             </div>
             <div class="pet-info">
@@ -253,7 +289,8 @@ function getPetIcon(type: string): string {
                 <span class="opponent-level">Lv.{{ opponent.pet?.level }}</span>
               </div>
               <div class="opponent-pet">
-                <span class="pet-icon">{{ getPetIcon(opponent.pet?.type || '') }}</span>
+                <img v-if="opponent.asset?.previewUrl" :src="opponent.asset.previewUrl" class="opponent-pet-image" />
+                <span v-else class="pet-icon">{{ getPetIcon(opponent.asset?.type || '') }}</span>
                 <span class="pet-name">{{ opponent.pet?.name }}</span>
               </div>
               <div v-if="opponent.petStats" class="opponent-stats">
@@ -280,7 +317,8 @@ function getPetIcon(type: string): string {
         <div class="arena-header">
           <div class="fighter player">
             <div class="fighter-avatar">
-              <span class="fighter-emoji">{{ getPetIcon(currentPet?.type || '') }}</span>
+              <img v-if="getPetImageUrl(currentPet)" :src="getPetImageUrl(currentPet)" class="fighter-image" />
+              <span v-else class="fighter-emoji">{{ getPetIcon(getPetType(currentPet)) }}</span>
             </div>
             <div class="fighter-info">
               <span class="fighter-name">{{ currentPet?.name }}</span>
@@ -300,7 +338,10 @@ function getPetIcon(type: string): string {
           
           <div class="fighter enemy">
             <div class="fighter-avatar">
-              <span class="fighter-emoji">{{ getPetIcon(opponents.find(o => o.id === selectedOpponent)?.pet?.type || '') }}</span>
+              <img v-if="opponents.find(o => o.id === selectedOpponent)?.asset?.previewUrl" 
+                   :src="opponents.find(o => o.id === selectedOpponent)?.asset?.previewUrl" 
+                   class="fighter-image" />
+              <span v-else class="fighter-emoji">{{ getPetIcon(opponents.find(o => o.id === selectedOpponent)?.asset?.type || '') }}</span>
             </div>
             <div class="fighter-info">
               <span class="fighter-name">{{ opponents.find(o => o.id === selectedOpponent)?.pet?.name }}</span>
@@ -518,6 +559,13 @@ function getPetIcon(type: string): string {
   font-size: 40px;
 }
 
+.pet-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
 .pet-level {
   position: absolute;
   bottom: -5px;
@@ -624,6 +672,13 @@ function getPetIcon(type: string): string {
   font-size: 24px;
 }
 
+.opponent-pet-image {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
 .pet-name {
   font-size: 13px;
 }
@@ -698,6 +753,13 @@ function getPetIcon(type: string): string {
 
 .fighter-emoji {
   font-size: 48px;
+}
+
+.fighter-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
 }
 
 .fighter-info {

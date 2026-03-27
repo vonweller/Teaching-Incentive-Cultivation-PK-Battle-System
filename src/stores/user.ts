@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { User, CharacterAppearance } from '@/types'
 import { getLevelByExp, getExpForNextLevel, getTitleByLevel, getAppearanceTier } from '@/types'
+import { usePetStore } from './pet'
 
 export const useUserStore = defineStore('user', () => {
   const currentUser = ref<User | null>(null)
@@ -56,6 +57,9 @@ export const useUserStore = defineStore('user', () => {
 
     users.value.push(newUser)
     currentUser.value = newUser
+    // 关键修复：注册后重置宠物状态（新用户没有宠物）
+    const petStore = usePetStore()
+    petStore.resetCurrentPet()
     return true
   }
 
@@ -82,6 +86,9 @@ export const useUserStore = defineStore('user', () => {
 
     users.value.push(newUser)
     currentUser.value = newUser
+    // 关键修复：注册后重置宠物状态（新用户没有宠物）
+    const petStore = usePetStore()
+    petStore.resetCurrentPet()
     return true
   }
 
@@ -90,12 +97,18 @@ export const useUserStore = defineStore('user', () => {
     if (user) {
       user.lastLoginAt = Date.now()
       currentUser.value = user
+      // 关键修复：登录后初始化当前用户的宠物
+      const petStore = usePetStore()
+      petStore.initUserPet()
       return true
     }
     return false
   }
 
   function logout() {
+    // 关键修复：登出前重置宠物状态
+    const petStore = usePetStore()
+    petStore.resetCurrentPet()
     currentUser.value = null
   }
 

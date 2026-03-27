@@ -64,6 +64,18 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, role: 'student' }
   },
   {
+    path: '/student/my-pet',
+    name: 'StudentMyPet',
+    component: () => import('@/views/student/MyPet.vue'),
+    meta: { requiresAuth: true, role: 'student' }
+  },
+  {
+    path: '/student/inventory',
+    name: 'StudentInventory',
+    component: () => import('@/views/student/Inventory.vue'),
+    meta: { requiresAuth: true, role: 'student' }
+  },
+  {
     path: '/teacher',
     name: 'TeacherHome',
     component: () => import('@/views/teacher/Home.vue'),
@@ -79,6 +91,12 @@ const routes: RouteRecordRaw[] = [
     path: '/teacher/rewards',
     name: 'TeacherRewards',
     component: () => import('@/views/teacher/Rewards.vue'),
+    meta: { requiresAuth: true, role: 'teacher' }
+  },
+  {
+    path: '/teacher/pet-assets',
+    name: 'TeacherPetAssets',
+    component: () => import('@/views/teacher/PetAssets.vue'),
     meta: { requiresAuth: true, role: 'teacher' }
   }
 ]

@@ -1,39 +1,57 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { usePetStore } from '@/stores/pet'
+import { usePetAssetStore } from '@/stores/petAsset'
 import { useGameStore } from '@/stores/game'
 import { useTaskStore } from '@/stores/task'
+import type { PetAsset } from '@/types'
 
 const router = useRouter()
 const userStore = useUserStore()
-const petStore = usePetStore()
+const petAssetStore = usePetAssetStore()
 const gameStore = useGameStore()
 const taskStore = useTaskStore()
 
-const showCreatePet = ref(false)
-const newPetName = ref('')
-const selectedPetType = ref<'dragon' | 'phoenix' | 'tiger' | 'rabbit' | 'turtle'>('rabbit')
+const showAdoptModal = ref(false)
+const selectedAsset = ref<PetAsset | null>(null)
+const adoptPetName = ref('')
 
 onMounted(() => {
   gameStore.recordLogin()
   taskStore.resetDailyTasksIfNeeded()
 })
 
-const petTypes = [
-  { type: 'dragon', name: '小火龙', icon: '🐉', rarity: 'rare' },
-  { type: 'phoenix', name: '凤凰雏鸟', icon: '🦅', rarity: 'legendary' },
-  { type: 'tiger', name: '小老虎', icon: '🐯', rarity: 'epic' },
-  { type: 'rabbit', name: '萌萌兔', icon: '🐰', rarity: 'common' },
-  { type: 'turtle', name: '玄龟', icon: '🐢', rarity: 'common' }
-]
+// 宠物类型图标映射
+const petTypeIcons: Record<string, string> = {
+  dragon: '🐉',
+  phoenix: '🦅',
+  tiger: '�',
+  rabbit: '🐰',
+  turtle: '🐢'
+}
+
+// 宠物类型名称映射
+const petTypeNames: Record<string, string> = {
+  dragon: '龙系',
+  phoenix: '凤系',
+  tiger: '虎系',
+  rabbit: '兔系',
+  turtle: '龟系'
+}
+
+// 获取当前用户的宠物
+const currentPet = computed(() => petAssetStore.currentUserPet)
+
+// 可领养的基础宠物素材
+const availableBasicAssets = computed(() => petAssetStore.basicAssets)
 
 const menuItems = [
   { name: 'StudentHome', icon: '🏠', label: '首页' },
-  { name: 'StudentPet', icon: '🐾', label: '我的宠物' },
+  { name: 'StudentMyPet', icon: '🐾', label: '我的宠物' },
   { name: 'StudentBattle', icon: '⚔️', label: 'PK对战' },
   { name: 'StudentShop', icon: '🛒', label: '商店' },
+  { name: 'StudentInventory', icon: '🎒', label: '背包' },
   { name: 'StudentTasks', icon: '📋', label: '任务' },
   { name: 'StudentRanking', icon: '🏆', label: '排行榜' },
   { name: 'StudentAchievements', icon: '🎖️', label: '成就' },
@@ -45,29 +63,58 @@ function handleLogout() {
   router.push({ name: 'Login' })
 }
 
-function createPet() {
-  if (!newPetName.value.trim()) return
-  petStore.createPet(selectedPetType.value, newPetName.value)
-  showCreatePet.value = false
-  newPetName.value = ''
-}
-
-function getExpProgress(pet: { exp: number; level: number }): number {
-  const thresholds = [0, 200, 600, 1200, 2000]
-  const currentExp = pet.exp
-  const currentThreshold = thresholds[Math.min(pet.level - 1, thresholds.length - 1)]
-  const nextThreshold = thresholds[Math.min(pet.level, thresholds.length - 1)]
-  return ((currentExp - currentThreshold) / (nextThreshold - currentThreshold)) * 100
-}
-
-function getRarityColor(rarity: string): string {
-  switch (rarity) {
-    case 'common': return 'var(--rarity-common)'
-    case 'rare': return 'var(--rarity-rare)'
-    case 'epic': return 'var(--rarity-epic)'
-    case 'legendary': return 'var(--rarity-legendary)'
-    default: return 'var(--rarity-common)'
+// 打开领养弹窗
+function openAdoptModal() {
+  if (availableBasicAssets.value.length === 0) {
+    alert('暂时没有可领养的宠物，请联系老师上传宠物素材')
+    return
   }
+  selectedAsset.value = availableBasicAssets.value[0]
+  adoptPetName.value = ''
+  showAdoptModal.value = true
+}
+
+// 领养宠物
+function adoptPet() {
+  if (!selectedAsset.value || !adoptPetName.value.trim()) return
+  
+  const pet = petAssetStore.adoptPet(selectedAsset.value.id, adoptPetName.value.trim())
+  if (pet) {
+    showAdoptModal.value = false
+    adoptPetName.value = ''
+    selectedAsset.value = null
+  } else {
+    alert('领养失败，请重试')
+  }
+}
+
+// 获取经验进度
+function getExpProgress(exp: number, _level: number): number {
+  return Math.min(100, (exp % 100) / 100 * 100)
+}
+
+// 获取等级颜色
+function getTierColor(tier: string): string {
+  const colors: Record<string, string> = {
+    basic: '#9ca3af',
+    advanced: '#3b82f6',
+    intermediate: '#a855f7',
+    master: '#f59e0b',
+    legendary: '#ef4444'
+  }
+  return colors[tier] || '#9ca3af'
+}
+
+// 获取等级名称
+function getTierName(tier: string): string {
+  const names: Record<string, string> = {
+    basic: '基础',
+    advanced: '进阶',
+    intermediate: '中级',
+    master: '大师',
+    legendary: '传说'
+  }
+  return names[tier] || tier
 }
 </script>
 
@@ -135,52 +182,56 @@ function getRarityColor(rarity: string): string {
         <div class="panel pet-panel">
           <div class="panel-header">
             <h2>我的宠物</h2>
-            <button v-if="!petStore.currentPet" class="btn btn-primary btn-sm" @click="showCreatePet = true">
+            <button v-if="!currentPet" class="btn btn-primary btn-sm" @click="openAdoptModal">
               领养宠物
             </button>
           </div>
           
-          <div v-if="petStore.currentPet" class="pet-display">
+          <div v-if="currentPet" class="pet-display">
             <div class="pet-card">
-              <div class="pet-avatar" :style="{ borderColor: getRarityColor(petStore.currentPet.rarity) }">
-                <span class="pet-emoji">
-                  {{ petTypes.find(p => p.type === petStore.currentPet?.type)?.icon || '🐾' }}
-                </span>
-                <span class="pet-level">Lv.{{ petStore.currentPet.level }}</span>
+              <div class="pet-avatar" :style="{ borderColor: getTierColor(currentPet.currentTier) }">
+                <img 
+                  v-if="petAssetStore.getAssetById(currentPet.assetId)?.previewUrl" 
+                  :src="petAssetStore.getAssetById(currentPet.assetId)?.previewUrl" 
+                  class="pet-image"
+                  alt="宠物"
+                />
+                <span v-else class="pet-emoji">{{ petTypeIcons[petAssetStore.getAssetById(currentPet.assetId)?.type || 'dragon'] }}</span>
+                <span class="pet-level">Lv.{{ currentPet.level }}</span>
               </div>
               <div class="pet-info">
-                <h3>{{ petStore.currentPet.name }}</h3>
-                <span class="pet-rarity" :style="{ color: getRarityColor(petStore.currentPet.rarity) }">
-                  {{ petStore.currentPet.rarity }}
+                <h3>{{ currentPet.name }}</h3>
+                <span class="pet-tier" :style="{ color: getTierColor(currentPet.currentTier) }">
+                  {{ getTierName(currentPet.currentTier) }}
                 </span>
               </div>
               <div class="pet-exp">
                 <div class="progress-bar">
-                  <div class="progress-bar-fill" :style="{ width: getExpProgress(petStore.currentPet) + '%' }"></div>
+                  <div class="progress-bar-fill" :style="{ width: getExpProgress(currentPet.exp, currentPet.level) + '%' }"></div>
                 </div>
-                <span class="exp-text">{{ petStore.currentPet.exp }} EXP</span>
+                <span class="exp-text">{{ currentPet.exp }} EXP</span>
               </div>
               <div class="pet-stats">
                 <div class="stat">
                   <span>⚔️ 攻击</span>
-                  <span>{{ petStore.getPetTotalStats(petStore.currentPet.id).attack }}</span>
+                  <span>{{ petAssetStore.getAssetById(currentPet.assetId)?.statsBonus.attack || 0 }}</span>
                 </div>
                 <div class="stat">
                   <span>🛡️ 防御</span>
-                  <span>{{ petStore.getPetTotalStats(petStore.currentPet.id).defense }}</span>
+                  <span>{{ petAssetStore.getAssetById(currentPet.assetId)?.statsBonus.defense || 0 }}</span>
                 </div>
                 <div class="stat">
                   <span>💨 速度</span>
-                  <span>{{ petStore.getPetTotalStats(petStore.currentPet.id).speed }}</span>
+                  <span>{{ petAssetStore.getAssetById(currentPet.assetId)?.statsBonus.speed || 0 }}</span>
                 </div>
                 <div class="stat">
                   <span>❤️ 生命</span>
-                  <span>{{ petStore.getPetTotalStats(petStore.currentPet.id).health }}</span>
+                  <span>{{ petAssetStore.getAssetById(currentPet.assetId)?.statsBonus.health || 0 }}</span>
                 </div>
               </div>
               <div class="pet-record">
-                <span>🏆 胜: {{ petStore.currentPet.wins }}</span>
-                <span>💔 负: {{ petStore.currentPet.losses }}</span>
+                <span>🏆 胜: {{ currentPet.wins }}</span>
+                <span>💔 负: {{ currentPet.losses }}</span>
               </div>
             </div>
           </div>
@@ -188,7 +239,7 @@ function getRarityColor(rarity: string): string {
           <div v-else class="no-pet">
             <span class="no-pet-icon">🐾</span>
             <p>你还没有宠物</p>
-            <button class="btn btn-primary" @click="showCreatePet = true">立即领养</button>
+            <button class="btn btn-primary" @click="openAdoptModal">立即领养</button>
           </div>
         </div>
         
@@ -247,31 +298,52 @@ function getRarityColor(rarity: string): string {
       </div>
     </main>
     
-    <div v-if="showCreatePet" class="modal-overlay" @click.self="showCreatePet = false">
+    <div v-if="showAdoptModal" class="modal-overlay" @click.self="showAdoptModal = false">
       <div class="modal animate-scaleIn">
-        <h2>领养宠物</h2>
-        <div class="pet-type-selector">
+        <h2>选择你的第一只宠物</h2>
+        <p class="modal-subtitle">基础形态宠物，随着成长可以进化成更强大的形态！</p>
+        
+        <div v-if="availableBasicAssets.length > 0" class="pet-asset-selector">
           <div 
-            v-for="pet in petTypes" 
-            :key="pet.type"
-            class="pet-type-option"
-            :class="{ selected: selectedPetType === pet.type }"
-            @click="selectedPetType = pet.type as any"
+            v-for="asset in availableBasicAssets" 
+            :key="asset.id"
+            class="pet-asset-option"
+            :class="{ selected: selectedAsset?.id === asset.id }"
+            @click="selectedAsset = asset"
           >
-            <span class="pet-icon">{{ pet.icon }}</span>
-            <span class="pet-name">{{ pet.name }}</span>
-            <span class="pet-rarity" :style="{ color: getRarityColor(pet.rarity) }">
-              {{ pet.rarity }}
-            </span>
+            <div class="pet-asset-image">
+              <img v-if="asset.previewUrl" :src="asset.previewUrl" :alt="asset.name" />
+              <span v-else class="pet-icon">{{ petTypeIcons[asset.type] || '🐾' }}</span>
+            </div>
+            <span class="pet-name">{{ asset.name }}</span>
+            <span class="pet-type">{{ petTypeNames[asset.type] || asset.type }}</span>
+            <div class="pet-stats-preview">
+              <span>⚔️ {{ asset.statsBonus.attack || 0 }}</span>
+              <span>🛡️ {{ asset.statsBonus.defense || 0 }}</span>
+              <span>❤️ {{ asset.statsBonus.health || 0 }}</span>
+            </div>
           </div>
         </div>
+        
+        <div v-else class="no-assets-message">
+          <p>暂时没有可领养的宠物素材</p>
+          <p>请联系老师上传宠物素材</p>
+        </div>
+        
         <div class="input-group">
           <label>宠物名字</label>
-          <input v-model="newPetName" type="text" placeholder="给你的宠物起个名字吧" />
+          <input v-model="adoptPetName" type="text" placeholder="给你的宠物起个名字吧" maxlength="10" />
         </div>
+        
         <div class="modal-actions">
-          <button class="btn btn-secondary" @click="showCreatePet = false">取消</button>
-          <button class="btn btn-primary" @click="createPet">确认领养</button>
+          <button class="btn btn-secondary" @click="showAdoptModal = false">取消</button>
+          <button 
+            class="btn btn-primary" 
+            @click="adoptPet"
+            :disabled="!selectedAsset || !adoptPetName.trim()"
+          >
+            确认领养
+          </button>
         </div>
       </div>
     </div>
@@ -685,15 +757,24 @@ function getRarityColor(rarity: string): string {
   text-align: center;
 }
 
-.pet-type-selector {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+.modal-subtitle {
+  text-align: center;
+  color: var(--text-secondary);
   margin-bottom: 20px;
+  font-size: 14px;
 }
 
-.pet-type-option {
-  padding: 16px;
+.pet-asset-selector {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.pet-asset-option {
+  padding: 12px;
   background: var(--bg-secondary);
   border: 2px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -702,30 +783,80 @@ function getRarityColor(rarity: string): string {
   transition: all var(--transition-fast);
 }
 
-.pet-type-option:hover {
+.pet-asset-option:hover {
   border-color: var(--primary-color);
 }
 
-.pet-type-option.selected {
+.pet-asset-option.selected {
   border-color: var(--primary-color);
   background: rgba(102, 126, 234, 0.1);
 }
 
+.pet-asset-image {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 8px;
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.pet-asset-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .pet-icon {
   font-size: 32px;
-  display: block;
-  margin-bottom: 8px;
 }
 
 .pet-name {
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 600;
   display: block;
   margin-bottom: 4px;
 }
 
-.pet-rarity {
+.pet-type {
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: block;
+  margin-bottom: 8px;
+}
+
+.pet-stats-preview {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
   font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.no-assets-message {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-secondary);
+}
+
+.no-assets-message p {
+  margin-bottom: 8px;
+}
+
+.pet-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.pet-tier {
+  font-size: 12px;
   text-transform: uppercase;
+  font-weight: 600;
 }
 
 .modal-actions {

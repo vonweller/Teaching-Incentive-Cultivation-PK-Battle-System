@@ -9,8 +9,10 @@ export const usePetStore = defineStore('pet', () => {
   const currentPetId = ref<string | null>(null)
 
   const currentPet = computed(() => {
-    if (!currentPetId.value) return null
-    return pets.value.find(p => p.id === currentPetId.value) || null
+    const userStore = useUserStore()
+    if (!currentPetId.value || !userStore.currentUser) return null
+    // 关键修复：验证宠物所有权，防止数据泄露
+    return pets.value.find(p => p.id === currentPetId.value && p.ownerId === userStore.currentUser!.id) || null
   })
 
   const userPets = computed(() => {
@@ -120,13 +122,39 @@ export const usePetStore = defineStore('pet', () => {
   }
 
   function selectPet(petId: string) {
-    if (pets.value.find(p => p.id === petId)) {
+    const userStore = useUserStore()
+    // 关键修复：验证宠物所有权后才允许选择
+    const pet = pets.value.find(p => p.id === petId && p.ownerId === userStore.currentUser?.id)
+    if (pet) {
       currentPetId.value = petId
     }
   }
 
   function getPetById(id: string): Pet | undefined {
-    return pets.value.find(p => p.id === id)
+    const userStore = useUserStore()
+    // 关键修复：验证宠物所有权
+    return pets.value.find(p => p.id === id && p.ownerId === userStore.currentUser?.id)
+  }
+
+  // 关键修复：用户切换时重置当前宠物ID
+  function resetCurrentPet() {
+    currentPetId.value = null
+  }
+
+  // 关键修复：初始化当前用户的宠物选择
+  function initUserPet() {
+    const userStore = useUserStore()
+    if (!userStore.currentUser) {
+      currentPetId.value = null
+      return
+    }
+    // 查找当前用户的第一个宠物
+    const userPet = pets.value.find(p => p.ownerId === userStore.currentUser!.id)
+    if (userPet) {
+      currentPetId.value = userPet.id
+    } else {
+      currentPetId.value = null
+    }
   }
 
   return {
@@ -141,7 +169,9 @@ export const usePetStore = defineStore('pet', () => {
     learnSkill,
     recordBattleResult,
     selectPet,
-    getPetById
+    getPetById,
+    resetCurrentPet,
+    initUserPet
   }
 }, {
   persist: true

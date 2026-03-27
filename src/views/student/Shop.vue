@@ -13,9 +13,10 @@ const purchaseSuccess = ref<string | null>(null)
 
 const menuItems = [
   { name: 'StudentHome', icon: '🏠', label: '首页' },
-  { name: 'StudentPet', icon: '🐾', label: '我的宠物' },
+  { name: 'StudentMyPet', icon: '🐾', label: '我的宠物' },
   { name: 'StudentBattle', icon: '⚔️', label: 'PK对战' },
   { name: 'StudentShop', icon: '🛒', label: '商店' },
+  { name: 'StudentInventory', icon: '🎒', label: '背包' },
   { name: 'StudentTasks', icon: '📋', label: '任务' },
   { name: 'StudentRanking', icon: '🏆', label: '排行榜' },
   { name: 'StudentAchievements', icon: '🎖️', label: '成就' },

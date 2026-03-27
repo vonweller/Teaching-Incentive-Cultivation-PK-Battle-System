@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import type { Equipment } from '@/types'
 import { EQUIPMENT_LIST } from '@/types'
 import { useUserStore } from './user'
+import { useInventoryStore } from './inventory'
 
 export const useEquipmentStore = defineStore('equipment', () => {
   const ownedEquipment = ref<Equipment[]>([])
@@ -20,6 +21,7 @@ export const useEquipmentStore = defineStore('equipment', () => {
 
   function buyEquipment(equipmentId: string): boolean {
     const userStore = useUserStore()
+    const inventoryStore = useInventoryStore()
     const template = EQUIPMENT_LIST[parseInt(equipmentId.split('_')[1])]
     
     if (!template) return false
@@ -37,7 +39,8 @@ export const useEquipmentStore = defineStore('equipment', () => {
       ...template
     }
 
-    ownedEquipment.value.push(newEquipment)
+    // 添加到背包
+    inventoryStore.addItem(newEquipment)
     return true
   }
 

@@ -13,7 +13,8 @@ function handleLogout() {
 const menuItems = [
   { name: 'TeacherHome', icon: '🏠', label: '首页' },
   { name: 'TeacherStudents', icon: '👥', label: '学生管理' },
-  { name: 'TeacherRewards', icon: '🏆', label: '奖惩系统' }
+  { name: 'TeacherRewards', icon: '🏆', label: '奖惩系统' },
+  { name: 'TeacherPetAssets', icon: '🐾', label: '宠物素材' }
 ]
 
 const stats = [
