@@ -12,9 +12,14 @@ const petAssetStore = usePetAssetStore()
 
 const showUploadModal = ref(false)
 const showPreviewModal = ref(false)
+const showEditModal = ref(false)
 const selectedAsset = ref<PetAsset | null>(null)
 const selectedType = ref<string>('all')
 const selectedTier = ref<PetAssetTier | 'all'>('all')
+const editError = ref('')
+const showToast = ref(false)
+const toastMessage = ref('')
+const toastType = ref<'success' | 'error'>('success')
 
 const uploadForm = ref<PetAssetForm>({
   name: '',
@@ -150,6 +155,148 @@ function getTypeIcon(type: string): string {
 function handleLogout() {
   userStore.logout()
   router.push({ name: 'Login' })
+}
+
+// 显示提示信息
+function showToastMessage(message: string, type: 'success' | 'error' = 'success') {
+  toastMessage.value = message
+  toastType.value = type
+  showToast.value = true
+  setTimeout(() => {
+    showToast.value = false
+  }, 3000)
+}
+
+// 打开编辑弹窗
+function openEditModal(asset: PetAsset) {
+  selectedAsset.value = asset
+  // 填充编辑表单
+  uploadForm.value = {
+    name: asset.name,
+    description: asset.description,
+    type: asset.type,
+    tier: asset.tier,
+    statsBonus: {
+      attack: asset.statsBonus.attack ?? 0,
+      defense: asset.statsBonus.defense ?? 0,
+      speed: asset.statsBonus.speed ?? 0,
+      health: asset.statsBonus.health ?? 0,
+      critical: asset.statsBonus.critical ?? 0
+    },
+    evolutionConditions: {
+      requiredLevel: asset.evolutionConditions.requiredLevel,
+      requiredExp: asset.evolutionConditions.requiredExp,
+      requiredWins: asset.evolutionConditions.requiredWins ?? 0,
+      requiredTasks: asset.evolutionConditions.requiredTasks ?? 0
+    }
+  }
+  // 如果有图片，设置预览
+  previewUrl.value = asset.previewUrl
+  selectedFile.value = null
+  fileType.value = asset.fileType || 'image'
+  editError.value = ''
+  showEditModal.value = true
+}
+
+// 关闭编辑弹窗
+function closeEditModal() {
+  showEditModal.value = false
+  selectedAsset.value = null
+  resetUploadForm()
+  editError.value = ''
+}
+
+// 验证编辑表单
+function validateEditForm(): boolean {
+  if (!uploadForm.value.name.trim()) {
+    editError.value = '请输入素材名称'
+    return false
+  }
+  if (uploadForm.value.name.length > 20) {
+    editError.value = '素材名称不能超过20个字符'
+    return false
+  }
+  if (uploadForm.value.description.length > 200) {
+    editError.value = '描述不能超过200个字符'
+    return false
+  }
+  if (uploadForm.value.statsBonus.attack < 0 || uploadForm.value.statsBonus.attack > 100) {
+    editError.value = '攻击力加成范围应为0-100'
+    return false
+  }
+  if (uploadForm.value.statsBonus.defense < 0 || uploadForm.value.statsBonus.defense > 100) {
+    editError.value = '防御力加成范围应为0-100'
+    return false
+  }
+  if (uploadForm.value.statsBonus.speed < 0 || uploadForm.value.statsBonus.speed > 100) {
+    editError.value = '速度加成范围应为0-100'
+    return false
+  }
+  if (uploadForm.value.statsBonus.health < 0 || uploadForm.value.statsBonus.health > 500) {
+    editError.value = '生命值加成范围应为0-500'
+    return false
+  }
+  if (uploadForm.value.statsBonus.critical < 0 || uploadForm.value.statsBonus.critical > 50) {
+    editError.value = '暴击率加成范围应为0-50'
+    return false
+  }
+  if (uploadForm.value.evolutionConditions.requiredLevel < 1 || uploadForm.value.evolutionConditions.requiredLevel > 100) {
+    editError.value = '所需等级范围应为1-100'
+    return false
+  }
+  if (uploadForm.value.evolutionConditions.requiredExp < 0) {
+    editError.value = '所需经验不能为负数'
+    return false
+  }
+  if (uploadForm.value.evolutionConditions.requiredWins < 0) {
+    editError.value = '所需胜场不能为负数'
+    return false
+  }
+  if (uploadForm.value.evolutionConditions.requiredTasks < 0) {
+    editError.value = '所需任务数不能为负数'
+    return false
+  }
+  return true
+}
+
+// 保存编辑
+function saveEdit() {
+  if (!selectedAsset.value) return
+  
+  // 验证表单
+  if (!validateEditForm()) {
+    return
+  }
+  
+  // 准备更新数据
+  const updateData: Partial<PetAsset> = {
+    name: uploadForm.value.name.trim(),
+    description: uploadForm.value.description.trim(),
+    type: uploadForm.value.type,
+    tier: uploadForm.value.tier,
+    statsBonus: { ...uploadForm.value.statsBonus },
+    evolutionConditions: { ...uploadForm.value.evolutionConditions },
+    updatedAt: Date.now()
+  }
+  
+  // 如果有新上传的文件，更新图片
+  if (selectedFile.value) {
+    const newImageUrl = URL.createObjectURL(selectedFile.value)
+    updateData.gifUrl = newImageUrl
+    updateData.previewUrl = newImageUrl
+    updateData.fileType = fileType.value
+  }
+  
+  // 调用store更新方法
+  const success = petAssetStore.updatePetAsset(selectedAsset.value.id, updateData)
+  
+  if (success) {
+    showToastMessage('素材更新成功！', 'success')
+    closeEditModal()
+  } else {
+    editError.value = '更新失败，请重试'
+    showToastMessage('更新失败，请重试', 'error')
+  }
 }
 </script>
 
@@ -287,6 +434,9 @@ function handleLogout() {
           <div class="asset-actions">
             <button class="btn btn-secondary btn-sm" @click="previewAsset(asset)">
               预览
+            </button>
+            <button class="btn btn-primary btn-sm" @click="openEditModal(asset)">
+              编辑
             </button>
             <button class="btn btn-danger btn-sm" @click="deleteAsset(asset.id)">
               删除
@@ -499,6 +649,159 @@ function handleLogout() {
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- 编辑模态框 -->
+    <div v-if="showEditModal && selectedAsset" class="modal-overlay" @click.self="closeEditModal">
+      <div class="modal upload-modal animate-scaleIn">
+        <div class="modal-header">
+          <h2>编辑宠物素材</h2>
+          <button class="close-btn" @click="closeEditModal">✕</button>
+        </div>
+        
+        <div v-if="editError" class="error-message">
+          {{ editError }}
+        </div>
+        
+        <div class="upload-form">
+          <div class="form-section">
+            <h3>基本信息</h3>
+            
+            <div class="input-group">
+              <label>素材名称 *</label>
+              <input 
+                v-model="uploadForm.name" 
+                type="text" 
+                placeholder="输入宠物名称"
+                maxlength="20"
+              />
+              <span class="input-hint">{{ uploadForm.name.length }}/20</span>
+            </div>
+            
+            <div class="input-group">
+              <label>描述</label>
+              <textarea 
+                v-model="uploadForm.description" 
+                rows="3" 
+                placeholder="输入宠物描述"
+                maxlength="200"
+              ></textarea>
+              <span class="input-hint">{{ uploadForm.description.length }}/200</span>
+            </div>
+            
+            <div class="form-row">
+              <div class="input-group">
+                <label>宠物类型 *</label>
+                <select v-model="uploadForm.type">
+                  <option v-for="type in PET_ASSET_TYPES" :key="type.value" :value="type.value">
+                    {{ type.icon }} {{ type.label }}
+                  </option>
+                </select>
+              </div>
+              
+              <div class="input-group">
+                <label>形态等级 *</label>
+                <select v-model="uploadForm.tier">
+                  <option v-for="tier in PET_ASSET_TIERS" :key="tier.value" :value="tier.value">
+                    {{ tier.label }}
+                  </option>
+                </select>
+              </div>
+            </div>
+          </div>
+          
+          <div class="form-section">
+            <h3>属性加成</h3>
+            
+            <div class="stats-grid">
+              <div class="input-group">
+                <label>攻击力 (0-100)</label>
+                <input v-model.number="uploadForm.statsBonus.attack" type="number" min="0" max="100" />
+              </div>
+              <div class="input-group">
+                <label>防御力 (0-100)</label>
+                <input v-model.number="uploadForm.statsBonus.defense" type="number" min="0" max="100" />
+              </div>
+              <div class="input-group">
+                <label>速度 (0-100)</label>
+                <input v-model.number="uploadForm.statsBonus.speed" type="number" min="0" max="100" />
+              </div>
+              <div class="input-group">
+                <label>生命值 (0-500)</label>
+                <input v-model.number="uploadForm.statsBonus.health" type="number" min="0" max="500" />
+              </div>
+              <div class="input-group">
+                <label>暴击率 (0-50)</label>
+                <input v-model.number="uploadForm.statsBonus.critical" type="number" min="0" max="50" />
+              </div>
+            </div>
+          </div>
+          
+          <div class="form-section">
+            <h3>进化条件</h3>
+            
+            <div class="form-row">
+              <div class="input-group">
+                <label>所需等级 (1-100)</label>
+                <input v-model.number="uploadForm.evolutionConditions.requiredLevel" type="number" min="1" max="100" />
+              </div>
+              <div class="input-group">
+                <label>所需经验</label>
+                <input v-model.number="uploadForm.evolutionConditions.requiredExp" type="number" min="0" />
+              </div>
+              <div class="input-group">
+                <label>所需胜场</label>
+                <input v-model.number="uploadForm.evolutionConditions.requiredWins" type="number" min="0" />
+              </div>
+              <div class="input-group">
+                <label>所需任务</label>
+                <input v-model.number="uploadForm.evolutionConditions.requiredTasks" type="number" min="0" />
+              </div>
+            </div>
+          </div>
+          
+          <div class="form-section">
+            <h3>宠物图片</h3>
+            <p class="section-hint">不选择新图片则保留原图片</p>
+            
+            <div class="file-upload">
+              <input 
+                type="file" 
+                accept="image/png,image/jpeg,image/jpg,image/gif" 
+                @change="handleFileChange"
+                id="edit-image-upload"
+                class="file-input"
+              />
+              <label for="edit-image-upload" class="file-label">
+                <span v-if="!selectedFile">📁 选择新图片 (可选)</span>
+                <span v-else>✅ {{ selectedFile.name }} ({{ fileType === 'gif' ? '动态图' : '静态图' }})</span>
+              </label>
+            </div>
+            
+            <div v-if="previewUrl" class="preview-section">
+              <label>当前图片预览</label>
+              <img :src="previewUrl" class="gif-preview" />
+            </div>
+          </div>
+        </div>
+        
+        <div class="modal-actions">
+          <button class="btn btn-secondary" @click="closeEditModal">取消</button>
+          <button 
+            class="btn btn-primary" 
+            @click="saveEdit"
+            :disabled="!uploadForm.name"
+          >
+            保存修改
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast 提示 -->
+    <div v-if="showToast" class="toast" :class="toastType">
+      <span class="toast-icon">{{ toastType === 'success' ? '✅' : '❌' }}</span>
+      <span class="toast-message">{{ toastMessage }}</span>
     </div>
   </div>
 </template>
@@ -1067,5 +1370,85 @@ function handleLogout() {
   content: '•';
   color: var(--primary-color);
   margin-right: 8px;
+}
+
+/* 编辑弹窗样式 */
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px 0;
+}
+
+.modal-header h2 {
+  padding: 0;
+}
+
+.error-message {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid var(--danger-color);
+  color: var(--danger-color);
+  padding: 12px 16px;
+  margin: 0 24px;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+}
+
+.input-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: right;
+  margin-top: 4px;
+}
+
+.section-hint {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+/* Toast 提示样式 */
+.toast {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 16px 20px;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 1000;
+  animation: slideIn 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.toast.success {
+  background: rgba(34, 197, 94, 0.9);
+  color: white;
+}
+
+.toast.error {
+  background: rgba(239, 68, 68, 0.9);
+  color: white;
+}
+
+.toast-icon {
+  font-size: 20px;
+}
+
+.toast-message {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 </style>
