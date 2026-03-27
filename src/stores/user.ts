@@ -183,6 +183,56 @@ export const useUserStore = defineStore('user', () => {
     return users.value.find(u => u.id === id)
   }
 
+  // 批量操作用户数据的方法（用于教师端发放奖励）
+  function addExpToUser(userId: string, amount: number) {
+    const user = users.value.find(u => u.id === userId)
+    if (!user) return
+    
+    const oldLevel = getLevelByExp(user.exp)
+    user.exp += amount
+    const newLevel = getLevelByExp(user.exp)
+
+    if (newLevel > oldLevel) {
+      user.level = newLevel
+      user.coins += (newLevel - oldLevel) * 50
+    }
+  }
+
+  function addCoinsToUser(userId: string, amount: number) {
+    const user = users.value.find(u => u.id === userId)
+    if (user) {
+      user.coins += amount
+    }
+  }
+
+  function addPointsToUser(userId: string, amount: number) {
+    const user = users.value.find(u => u.id === userId)
+    if (user) {
+      user.points += amount
+    }
+  }
+
+  function deductExpFromUser(userId: string, amount: number) {
+    const user = users.value.find(u => u.id === userId)
+    if (!user) return
+    user.exp = Math.max(0, user.exp - amount)
+    user.level = getLevelByExp(user.exp)
+  }
+
+  function deductCoinsFromUser(userId: string, amount: number): boolean {
+    const user = users.value.find(u => u.id === userId)
+    if (!user || user.coins < amount) return false
+    user.coins -= amount
+    return true
+  }
+
+  function deductPointsFromUser(userId: string, amount: number) {
+    const user = users.value.find(u => u.id === userId)
+    if (user) {
+      user.points = Math.max(0, user.points - amount)
+    }
+  }
+
   return {
     currentUser,
     isLoggedIn,
@@ -203,7 +253,13 @@ export const useUserStore = defineStore('user', () => {
     deductPoints,
     updateAppearance,
     getAllStudents,
-    getUserById
+    getUserById,
+    addExpToUser,
+    addCoinsToUser,
+    addPointsToUser,
+    deductExpFromUser,
+    deductCoinsFromUser,
+    deductPointsFromUser
   }
 }, {
   persist: true

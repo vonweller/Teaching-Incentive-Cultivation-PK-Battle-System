@@ -9,7 +9,7 @@ const route = useRoute()
 const userStore = useUserStore()
 const taskStore = useTaskStore()
 
-const selectedStudentId = ref<string>('')
+const selectedStudentIds = ref<string[]>([])
 const rewardType = ref<'praise' | 'homework' | 'attendance' | 'punish'>('praise')
 const rewardAmount = ref(10)
 const punishType = ref<'points' | 'coins' | 'exp'>('points')
@@ -17,12 +17,12 @@ const punishAmount = ref(5)
 const reason = ref('')
 const showResult = ref(false)
 const resultMessage = ref('')
+const selectAll = ref(false)
 
 const students = computed(() => userStore.getAllStudents())
 
-const selectedStudent = computed(() => {
-  if (!selectedStudentId.value) return null
-  return userStore.getUserById(selectedStudentId.value)
+const selectedStudents = computed(() => {
+  return students.value.filter(s => selectedStudentIds.value.includes(s.id))
 })
 
 const rewardOptions = [
@@ -39,9 +39,31 @@ const punishOptions = [
 
 onMounted(() => {
   if (route.query.studentId) {
-    selectedStudentId.value = route.query.studentId as string
+    const id = route.query.studentId as string
+    if (!selectedStudentIds.value.includes(id)) {
+      selectedStudentIds.value.push(id)
+    }
   }
 })
+
+// 切换学生选择
+function toggleStudent(studentId: string) {
+  const index = selectedStudentIds.value.indexOf(studentId)
+  if (index > -1) {
+    selectedStudentIds.value.splice(index, 1)
+  } else {
+    selectedStudentIds.value.push(studentId)
+  }
+}
+
+// 全选/取消全选
+function toggleSelectAll() {
+  if (selectAll.value) {
+    selectedStudentIds.value = students.value.map(s => s.id)
+  } else {
+    selectedStudentIds.value = []
+  }
+}
 
 function selectReward(type: 'praise' | 'homework' | 'attendance') {
   rewardType.value = type
@@ -51,63 +73,81 @@ function selectReward(type: 'praise' | 'homework' | 'attendance') {
   }
 }
 
+// 批量发放奖励
 function giveReward() {
-  if (!selectedStudent.value) return
+  if (selectedStudents.value.length === 0) return
   
-  const student = selectedStudent.value
-  userStore.currentUser = student
+  let successCount = 0
   
-  switch (rewardType.value) {
-    case 'praise':
-      userStore.addPoints(rewardAmount.value)
-      userStore.addExp(rewardAmount.value * 2)
-      userStore.addCoins(rewardAmount.value)
-      taskStore.recordClassPerformance(student.id)
-      break
-    case 'homework':
-      userStore.addPoints(rewardAmount.value)
-      userStore.addExp(rewardAmount.value * 3)
-      userStore.addCoins(rewardAmount.value * 2)
-      taskStore.completeHomework(student.id, {
-        exp: rewardAmount.value * 3,
-        coins: rewardAmount.value * 2,
-        points: rewardAmount.value
-      })
-      break
-    case 'attendance':
-      userStore.addPoints(rewardAmount.value)
-      userStore.addExp(rewardAmount.value)
-      taskStore.recordAttendance(student.id)
-      break
-  }
+  selectedStudents.value.forEach(student => {
+    // 直接给学生添加奖励，无需切换当前用户
+    switch (rewardType.value) {
+      case 'praise':
+        userStore.addPointsToUser(student.id, rewardAmount.value)
+        userStore.addExpToUser(student.id, rewardAmount.value * 2)
+        userStore.addCoinsToUser(student.id, rewardAmount.value)
+        taskStore.recordClassPerformance(student.id)
+        break
+      case 'homework':
+        userStore.addPointsToUser(student.id, rewardAmount.value)
+        userStore.addExpToUser(student.id, rewardAmount.value * 3)
+        userStore.addCoinsToUser(student.id, rewardAmount.value * 2)
+        taskStore.completeHomework(student.id, {
+          exp: rewardAmount.value * 3,
+          coins: rewardAmount.value * 2,
+          points: rewardAmount.value
+        })
+        break
+      case 'attendance':
+        userStore.addPointsToUser(student.id, rewardAmount.value)
+        userStore.addExpToUser(student.id, rewardAmount.value)
+        taskStore.recordAttendance(student.id)
+        break
+    }
+    successCount++
+  })
   
-  resultMessage.value = `已为 ${student.name} 添加奖励！获得 ${rewardAmount.value} 积分`
+  resultMessage.value = `已成功为 ${successCount} 名学生发放奖励！每人获得 ${rewardAmount.value} 积分`
   showResult.value = true
+  
+  // 清空选择
+  selectedStudentIds.value = []
+  selectAll.value = false
+  
   setTimeout(() => {
     showResult.value = false
   }, 3000)
 }
 
+// 批量执行处罚
 function givePunishment() {
-  if (!selectedStudent.value) return
+  if (selectedStudents.value.length === 0) return
   
-  const student = selectedStudent.value
-  userStore.currentUser = student
+  let successCount = 0
   
-  switch (punishType.value) {
-    case 'points':
-      userStore.deductPoints(punishAmount.value)
-      break
-    case 'coins':
-      userStore.deductCoins(punishAmount.value)
-      break
-    case 'exp':
-      userStore.deductExp(punishAmount.value)
-      break
-  }
+  selectedStudents.value.forEach(student => {
+    switch (punishType.value) {
+      case 'points':
+        userStore.deductPointsFromUser(student.id, punishAmount.value)
+        break
+      case 'coins':
+        userStore.deductCoinsFromUser(student.id, punishAmount.value)
+        break
+      case 'exp':
+        userStore.deductExpFromUser(student.id, punishAmount.value)
+        break
+    }
+    successCount++
+  })
   
-  resultMessage.value = `已对 ${student.name} 执行处罚！扣除 ${punishAmount.value} ${punishType.value === 'points' ? '积分' : punishType.value === 'coins' ? '金币' : '经验'}`
+  const typeName = punishType.value === 'points' ? '积分' : punishType.value === 'coins' ? '金币' : '经验'
+  resultMessage.value = `已成功对 ${successCount} 名学生执行处罚！每人扣除 ${punishAmount.value} ${typeName}`
   showResult.value = true
+  
+  // 清空选择
+  selectedStudentIds.value = []
+  selectAll.value = false
+  
   setTimeout(() => {
     showResult.value = false
   }, 3000)
@@ -181,15 +221,30 @@ function handleLogout() {
       
       <div class="content-grid">
         <div class="panel student-select-panel">
-          <h2>选择学生</h2>
+          <div class="panel-header">
+            <h2>选择学生</h2>
+            <label class="select-all-label">
+              <input type="checkbox" v-model="selectAll" @change="toggleSelectAll" />
+              <span>全选</span>
+            </label>
+          </div>
+          <div class="selected-count" v-if="selectedStudents.length > 0">
+            已选择 {{ selectedStudents.length }} 名学生
+          </div>
           <div class="student-list">
             <div 
               v-for="student in students" 
               :key="student.id"
               class="student-item"
-              :class="{ selected: selectedStudentId === student.id }"
-              @click="selectedStudentId = student.id"
+              :class="{ selected: selectedStudentIds.includes(student.id) }"
+              @click="toggleStudent(student.id)"
             >
+              <input 
+                type="checkbox" 
+                :checked="selectedStudentIds.includes(student.id)"
+                @click.stop
+                @change="toggleStudent(student.id)"
+              />
               <span class="student-avatar">👨‍🎓</span>
               <div class="student-info">
                 <span class="student-name">{{ student.name }}</span>
@@ -201,24 +256,36 @@ function handleLogout() {
         </div>
         
         <div class="panel action-panel">
-          <div v-if="selectedStudent" class="selected-info">
-            <span class="selected-avatar">👨‍🎓</span>
-            <div class="selected-details">
-              <h3>{{ selectedStudent.name }}</h3>
-              <div class="selected-stats">
-                <span>⭐ {{ selectedStudent.points }} 积分</span>
-                <span>💰 {{ selectedStudent.coins }} 金币</span>
-                <span>📊 Lv.{{ getLevelByExp(selectedStudent.exp) }}</span>
+          <div v-if="selectedStudents.length > 0" class="selected-info">
+            <div v-if="selectedStudents.length === 1" class="single-student">
+              <span class="selected-avatar">👨‍🎓</span>
+              <div class="selected-details">
+                <h3>{{ selectedStudents[0].name }}</h3>
+                <div class="selected-stats">
+                  <span>⭐ {{ selectedStudents[0].points }} 积分</span>
+                  <span>💰 {{ selectedStudents[0].coins }} 金币</span>
+                  <span>📊 Lv.{{ getLevelByExp(selectedStudents[0].exp) }}</span>
+                </div>
+              </div>
+            </div>
+            <div v-else class="multiple-students">
+              <span class="selected-avatar">👥</span>
+              <div class="selected-details">
+                <h3>已选择 {{ selectedStudents.length }} 名学生</h3>
+                <div class="selected-names">
+                  {{ selectedStudents.slice(0, 3).map(s => s.name).join('、') }}
+                  <span v-if="selectedStudents.length > 3">等...</span>
+                </div>
               </div>
             </div>
           </div>
           
           <div v-else class="no-selection">
             <span class="no-selection-icon">👈</span>
-            <p>请先选择一个学生</p>
+            <p>请至少选择一名学生</p>
           </div>
           
-          <div v-if="selectedStudent" class="action-sections">
+          <div v-if="selectedStudents.length > 0" class="action-sections">
             <div class="action-section">
               <h3>🎁 奖励操作</h3>
               <div class="reward-options">
@@ -450,6 +517,42 @@ function handleLogout() {
   padding: 24px;
 }
 
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.panel-header h2 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.select-all-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.select-all-label input {
+  cursor: pointer;
+}
+
+.selected-count {
+  background: rgba(102, 126, 234, 0.1);
+  border: 1px solid var(--primary-color);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--primary-light);
+  text-align: center;
+}
+
 .panel h2 {
   font-size: 18px;
   margin-bottom: 16px;
@@ -469,6 +572,12 @@ function handleLogout() {
   cursor: pointer;
   transition: all var(--transition-fast);
   margin-bottom: 8px;
+}
+
+.student-item input[type="checkbox"] {
+  cursor: pointer;
+  width: 18px;
+  height: 18px;
 }
 
 .student-item:hover {
@@ -506,13 +615,28 @@ function handleLogout() {
 }
 
 .selected-info {
-  display: flex;
-  align-items: center;
-  gap: 16px;
   padding: 16px;
   background: var(--bg-secondary);
   border-radius: var(--radius-md);
   margin-bottom: 24px;
+}
+
+.single-student {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.multiple-students {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.selected-names {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 4px;
 }
 
 .selected-avatar {
